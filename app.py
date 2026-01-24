@@ -14,6 +14,8 @@ import shutil
 import json
 import google.generativeai as genai
 
+genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+
 # Load environment variables from .env file if it exists
 try:
     from dotenv import load_dotenv
@@ -683,3 +685,4 @@ async def analyze_request(req: GeminiAnalysisRequest):
             status_code=500, 
             detail=f'Failed to analyze text: {str(e)}'
         )
+
