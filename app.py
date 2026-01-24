@@ -114,6 +114,7 @@ Analyze the following text and return ONLY valid JSON.
 
 Text: "{text}"
 
+Return exactly this JSON schema:
 {{
   "sentiment": "positive | negative | neutral",
   "score": number between -1 and 1,
@@ -125,10 +126,23 @@ Text: "{text}"
     response = model.generate_content(prompt)
     raw = response.text.strip()
 
-    if raw.startswith("```"):
-        raw = raw.replace("```json", "").replace("```", "").strip()
+    # --- CLEANUP ---
+    raw = raw.replace("```json", "").replace("```", "").strip()
 
-    return json.loads(raw)
+    # extract first JSON object defensively
+    start = raw.find("{")
+    end = raw.rfind("}")
+    if start == -1 or end == -1:
+        raise HTTPException(500, f"Invalid Gemini response: {raw}")
+
+    cleaned = raw[start:end + 1]
+
+    try:
+        data = json.loads(cleaned)
+    except Exception as e:
+        raise HTTPException(500, f"JSON parse failed: {cleaned}")
+
+    return data
 
 # =========================
 # Routes
@@ -170,3 +184,4 @@ async def analyze_request(req: GeminiAnalysisRequest):
     )
 
     return result
+
