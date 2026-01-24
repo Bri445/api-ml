@@ -13,6 +13,18 @@ import requests
 import shutil
 import json
 import google.generativeai as genai
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # or ["http://localhost:5173"] for Vite
+    allow_credentials=True,
+    allow_methods=["*"],  # allows POST, OPTIONS, etc.
+    allow_headers=["*"],  # allows Content-Type, Authorization, etc.
+)
 
 genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
@@ -685,4 +697,5 @@ async def analyze_request(req: GeminiAnalysisRequest):
             status_code=500, 
             detail=f'Failed to analyze text: {str(e)}'
         )
+
 
