@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+gunicorn
+scikit-learn>=1.0
+pandas>=1.0
+joblib
+numpy
+scipy
+emoji
+vaderSentiment
+requests
