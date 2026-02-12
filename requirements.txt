@@ -10,3 +10,4 @@ emoji
 vaderSentiment
 requests
 google-generativeai
+openai
