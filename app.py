@@ -15,30 +15,23 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-import google.generativeai as genai
+from openai import OpenAI
 from emoji_sentiment import EmojiSentiment
 
-# =========================
-# Environment / Gemini
-# =========================
-
 GEMINI_API_KEY = os.getenv("GOOGLE_API_KEY")
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
 
 MODEL_PATH = os.getenv("MODEL_PATH", "streaming_model.joblib")
 MODEL_URL = os.getenv("MODEL_URL")
 
-# =========================
-# Globals
-# =========================
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+
+client = OpenAI(
+    api_key=OPENROUTER_API_KEY,
+    base_url="https://openrouter.ai/api/v1"
+)
 
 _artifact = None
 _lexicon_es = None
-
-# =========================
-# Lifespan (startup)
-# =========================
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -58,30 +51,18 @@ async def lifespan(app: FastAPI):
     _artifact, _lexicon_es = await anyio.to_thread.run_sync(startup)
     yield
 
-# =========================
-# FastAPI App (ONE INSTANCE)
-# =========================
-
 app = FastAPI(
     title="EmojiTextSentimentAPI",
     lifespan=lifespan
 )
 
-# =========================
-# CORS (FIXES OPTIONS 405)
-# =========================
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # change to frontend URL in prod
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["*"],  # POST, OPTIONS, etc
-    allow_headers=["*"],  # Content-Type, Authorization
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
-
-# =========================
-# Models
-# =========================
 
 class PredictRequest(BaseModel):
     text: str
@@ -99,15 +80,9 @@ class GeminiAnalysisResponse(BaseModel):
     keywords: List[str]
     top_keyword: str
 
-# =========================
-# Gemini Analysis
-# =========================
-
 def analyze_with_gemini(text: str) -> Dict:
-    if not GEMINI_API_KEY:
-        raise HTTPException(500, "GOOGLE_API_KEY not set")
-
-    model = genai.GenerativeModel("gemini-flash-latest")
+    if not OPENROUTER_API_KEY:
+        raise HTTPException(500, "OPENROUTER_API_KEY not set")
 
     prompt = f"""
 Analyze the following text and return ONLY valid JSON.
@@ -123,30 +98,34 @@ Return exactly this JSON schema:
 }}
 """
 
-    response = model.generate_content(prompt)
-    raw = response.text.strip()
+    try:
+        response = client.chat.completions.create(
+            model="meta-llama/llama-3.1-8b-instruct",
+            messages=[
+                {"role": "system", "content": "Return strict JSON only."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.2,
+        )
+        raw = response.choices[0].message.content.strip()
+    except Exception as e:
+        raise HTTPException(500, f"OpenRouter error: {str(e)}")
 
-    # --- CLEANUP ---
     raw = raw.replace("```json", "").replace("```", "").strip()
 
-    # extract first JSON object defensively
     start = raw.find("{")
     end = raw.rfind("}")
     if start == -1 or end == -1:
-        raise HTTPException(500, f"Invalid Gemini response: {raw}")
+        raise HTTPException(500, f"Invalid LLM response: {raw}")
 
     cleaned = raw[start:end + 1]
 
     try:
         data = json.loads(cleaned)
-    except Exception as e:
+    except Exception:
         raise HTTPException(500, f"JSON parse failed: {cleaned}")
 
     return data
-
-# =========================
-# Routes
-# =========================
 
 @app.get("/health")
 def health():
@@ -184,4 +163,3 @@ async def analyze_request(req: GeminiAnalysisRequest):
     )
 
     return result
-
